@@ -8,7 +8,8 @@ import numpy.typing as npt
 import torch
 from jaxtyping import Bool, Float, Int
 from torch import Tensor
-
+import regex as re
+import sys
 
 def run_linear(
     d_in: int,
@@ -561,6 +562,20 @@ def get_tokenizer(
     """
     raise NotImplementedError
 
+def token_replace(token, inverted_dict, out_list):
+        # print(type(token))
+        if(type(token) == type(43)):
+            if token > 255:
+                token_replace(inverted_dict[token][0], inverted_dict, out_list)
+            else:
+                out_list.append(token)
+        else:
+            for x in token:
+                if x > 255:
+                    token_replace(inverted_dict[x], inverted_dict, out_list)
+                else:
+                    out_list.append(x)
+        return out_list
 
 def run_train_bpe(
     input_path: str | os.PathLike,
@@ -589,4 +604,47 @@ def run_train_bpe(
                 representing that <token1> was merged with <token2>.
                 Merges are ordered by order of creation.
     """
+    with open(input_path) as f:
+        # with open("../sample.txt") as f:
+        corpus = f.read()
+    # corpus = "সামির"
+    PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+    corpus = re.findall(PAT, corpus)
+    tokens = []
+    for word in corpus:
+        encoded = list(word.encode("utf-8"))
+        tokens.append(encoded)
+    start_token = 256
+    # vocab_size = 270
+    merges = {}
+    for new_id in range(start_token, vocab_size):
+        counts = {}
+        for entry in tokens:
+            for pair in zip(entry, entry[1:]):
+                counts[pair] = counts.get(pair,0)+1
+        sorted_counts = {v: k for k, v in sorted(counts.items(), key=lambda item: item[1], reverse = True)}
+        if len(sorted_counts.keys()) > 0:
+            chr1, chr2 = sorted_counts.get(max(sorted_counts.keys()))
+            merges[(chr1, chr2)] = new_id
+            for entry in tokens:
+                for i, char in enumerate(entry):
+                    if (len(entry) >= 2) & (i < len(entry)-1):
+                        if (entry[i], entry[i+1]) == (chr1, chr2):
+                            entry[i] = new_id
+                            entry[i+1:] = entry[i+2:]
+            new_id += 1
+    vocabs = []
+    for vocab in merges.items():
+        vocabs.append(vocab[0])
+
+    entry = {}
+
+    inverted_merges = {v: k for k, v in sorted(merges.items(), key=lambda item: item[1], reverse = True)}
+
+    for merge in inverted_merges.items():
+        sub_entry = []
+        token_replace(merge[1], inverted_merges, sub_entry)
+        entry[merge[0]] = sub_entry
+
+    return entry, vocabs
     raise NotImplementedError
