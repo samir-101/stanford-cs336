@@ -562,20 +562,7 @@ def get_tokenizer(
     """
     raise NotImplementedError
 
-def token_replace(token, inverted_dict, out_list):
-        # print(type(token))
-        if(type(token) == type(43)):
-            if token > 255:
-                token_replace(inverted_dict[token][0], inverted_dict, out_list)
-            else:
-                out_list.append(token)
-        else:
-            for x in token:
-                if x > 255:
-                    token_replace(inverted_dict[x], inverted_dict, out_list)
-                else:
-                    out_list.append(x)
-        return out_list
+
 
 def run_train_bpe(
     input_path: str | os.PathLike,
@@ -605,9 +592,7 @@ def run_train_bpe(
                 Merges are ordered by order of creation.
     """
     with open(input_path) as f:
-        # with open("../sample.txt") as f:
         corpus = f.read()
-    # corpus = "সামির"
     PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
     corpus = re.findall(PAT, corpus)
     tokens = []
@@ -615,7 +600,6 @@ def run_train_bpe(
         encoded = list(word.encode("utf-8"))
         tokens.append(encoded)
     start_token = 256
-    # vocab_size = 270
     merges = {}
     for new_id in range(start_token, vocab_size):
         counts = {}
