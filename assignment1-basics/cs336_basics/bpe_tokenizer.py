@@ -26,63 +26,82 @@ def bpe_trianer(
     token_id = 0
     vocab = {}
     merges = []
-    for token in special_tokens:
-        vocab[token_id] = token
-        token_id += 1
+    corpus_words_list = []
+    
 
     for i in range(256):
         vocab[token_id] = bytes([i])
         token_id += 1
+
+    for token in special_tokens:
+        vocab[token_id] = token
+        token_id += 1
     
     with open(input_path) as f:
         corpus = f.read()
-    pattern = "|".join(re.escape(token) for token in special_tokens)
-    corpus_segments = re.split(f"({pattern})", corpus)
-    corpus_segments = [segment for segment in corpus_segments if segment]
+
+    import re as builtin_re
+    if special_tokens:
+        pattern = "|".join(builtin_re.escape(token) for token in special_tokens)
+        corpus_segments = builtin_re.split(f"({pattern})", corpus)
+        corpus_segments = [segment for segment in corpus_segments if segment]
+    else:
+        corpus_segments = [corpus]
     
     PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
-    corpus = re.findall(PAT, corpus)
+    # corpus = re.findall(PAT, corpus)
     word_freq = Counter()
     for part in corpus_segments:
+        # print(f"words are : {part}")
         if part in special_tokens:
             continue
         else:
+            sub_list = []
             pretokens = re.findall(PAT, part)
+            
             for pretoken in pretokens:
                 byte_tuple = tuple(bytes([b]) for b in pretoken.encode('utf-8'))
+                sub_list.append(list(bytes([b]) for b in pretoken.encode('utf-8')))
                 word_freq[byte_tuple] += 1
-    print(f"total unique words: {word_freq}")
+            corpus_words_list.append(sub_list)
+
+    print(f"total unique words: {len(word_freq)}")
     
-    # for new_id in range(start_token, vocab_size):
-    #     counts = {}
-    #     for entry in tokens:
-    #         for pair in zip(entry, entry[1:]):
-    #             counts[pair] = counts.get(pair,0)+1
-    #     sorted_counts = {v: k for k, v in sorted(counts.items(), key=lambda item: item[1], reverse = True)}
-    #     if len(sorted_counts.keys()) > 0:
-    #         chr1, chr2 = sorted_counts.get(max(sorted_counts.keys()))
-    #         merges[(chr1, chr2)] = new_id
-    #         for entry in tokens:
-    #             for i, char in enumerate(entry):
-    #                 if (len(entry) >= 2) & (i < len(entry)-1):
-    #                     if (entry[i], entry[i+1]) == (chr1, chr2):
-    #                         entry[i] = new_id
-    #                         entry[i+1:] = entry[i+2:]
-    #         new_id += 1
-    # vocabs = []
-    # for vocab in merges.items():
-    #     vocabs.append(vocab[0])
+    
+    while token_id < vocab_size:
+        counts = {}
+        for entry in corpus_words_list:
+            # print(entry)
+            for word in entry:
+                # entry = list(entry)
+                for pair in zip(word, word[1:]):
+                    # print(pair)
+                    counts[pair] = counts.get(pair,0)+1
+            sorted_counts = {k:v for k,v in sorted(counts.items(), key= lambda item: (item[1], item[0]), reverse = True)}
+        if len(sorted_counts) > 0:
+            chr1, chr2 = next(iter(sorted_counts))
+            # merges.append((bytes(chr1)), bytes(chr2))
+            
+            new_token = bytes(chr1) + bytes(chr2)
 
-    # entry = {}
+            vocab[token_id] = new_token
+            # print(f"{chr1} + {chr2} == {new_token}")
+            merges.append((chr1, chr2))
 
-    # inverted_merges = {v: k for k, v in sorted(merges.items(), key=lambda item: item[1], reverse = True)}
-
-    # for merge in inverted_merges.items():
-    #     sub_entry = []
-    #     token_replace(merge[1], inverted_merges, sub_entry)
-    #     entry[merge[0]] = sub_entry
-    # print(entry)
-    # return entry, vocabs
+            for entry in corpus_words_list[0]:
+                entry = entry
+                for i, char in enumerate(entry):
+                    if (len(entry) >= 2) & (i < len(entry)-1):
+                        if (entry[i], entry[i+1]) == (chr1, chr2):
+                            entry[i] = new_token
+                            entry[i+1:] = entry[i+2:]
+            token_id += 1
+        if (token_id + 1) % 50 == 0:
+            print(f"Completed {token_id + 1} merges...")
+    print(merges)
+    print(vocab)
+    return vocab, merges
 
 if __name__ == '__main__':
-    bpe_trianer("sample.txt", 300, [])
+    # bpe_trianer("tests/fixtures/tinystories_sample_5M.txt", 1000, ["<|endoftext|>"])
+    bpe_trianer("sample.txt", 270, ["<|endoftext|>"])
