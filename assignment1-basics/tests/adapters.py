@@ -10,7 +10,6 @@ from jaxtyping import Bool, Float, Int
 from torch import Tensor
 import regex as re
 import sys
-from cs336_basics.bpe_tokenizer import bpe_trianer
 
 def run_linear(
     d_in: int,
@@ -592,5 +591,14 @@ def run_train_bpe(
                 representing that <token1> was merged with <token2>.
                 Merges are ordered by order of creation.
     """
-    return bpe_trianer(input_path, vocab_size, special_tokens)
+    from cs336_basics.tokenizer_ideal import train_bpe
+    from cs336_basics.bpe_tokenizer import bpe_trainer
+    # a = train_bpe(input_path, vocab_size, special_tokens)
+    return bpe_trainer(input_path, vocab_size, special_tokens)
+    # if (a == b):
+    #     print("matches")
+    #     return b
+    # else:
+    #     print("error occurred")
+    #     return a
     raise NotImplementedError

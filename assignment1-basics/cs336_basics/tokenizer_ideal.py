@@ -92,8 +92,8 @@ def train_bpe(
         
         # Find most frequent pair (lexicographic tiebreaking)
         most_frequent_pair = max(pair_counts.items(), key=lambda x: (x[1], x[0]))[0]
-        print(most_frequent_pair)
-        print(type(most_frequent_pair[0]))
+        # print(most_frequent_pair)
+        # print(type(most_frequent_pair[0]))
         
         # Record this merge (pairs should be bytes objects)
         merge_bytes = (most_frequent_pair[0], most_frequent_pair[1])
@@ -111,7 +111,8 @@ def train_bpe(
             print(f"Completed {merge_idx + 1} merges...")
     
     print(f"BPE training completed. Final vocab size: {len(vocab)}")
-    
+    print(vocab)
+    print(merges)
     return vocab, merges
 
 
@@ -196,6 +197,7 @@ if __name__ == "__main__":
         vocab_size=270,  # 1 special + 256 bytes + 43 merges
         special_tokens=["<|endoftext|>"]
     )
+    # vocab, merges = train_bpe("tests/fixtures/corpus.en", 1000, ["<|endoftext|>"])
     
     # print(f"\nVocabulary size: {len(vocab)}")
     # print(f"Number of merges: {len(merges)}")

@@ -1,6 +1,7 @@
 import os
 import regex as re
 from collections import Counter
+from tqdm import tqdm
 
 def token_replace(token, inverted_dict, out_list):
     # print(type(token))
@@ -17,7 +18,7 @@ def token_replace(token, inverted_dict, out_list):
                 out_list.append(x)
     return out_list
 
-def bpe_trianer(
+def bpe_trainer(
     input_path: str | os.PathLike,
     vocab_size: int,
     special_tokens: list[str],
@@ -28,13 +29,12 @@ def bpe_trianer(
     merges = []
     corpus_words_list = []
     
+    for token in special_tokens:
+        vocab[token_id] = token.encode('utf-8')
+        token_id += 1
 
     for i in range(256):
         vocab[token_id] = bytes([i])
-        token_id += 1
-
-    for token in special_tokens:
-        vocab[token_id] = token
         token_id += 1
     
     with open(input_path) as f:
@@ -45,63 +45,56 @@ def bpe_trianer(
         pattern = "|".join(builtin_re.escape(token) for token in special_tokens)
         corpus_segments = builtin_re.split(f"({pattern})", corpus)
         corpus_segments = [segment for segment in corpus_segments if segment]
+        # print(corpus_segments)
     else:
         corpus_segments = [corpus]
     
     PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
-    # corpus = re.findall(PAT, corpus)
     word_freq = Counter()
-    for part in corpus_segments:
-        # print(f"words are : {part}")
+    for part in tqdm(corpus_segments):
         if part in special_tokens:
             continue
         else:
-            sub_list = []
             pretokens = re.findall(PAT, part)
-            
             for pretoken in pretokens:
                 byte_tuple = tuple(bytes([b]) for b in pretoken.encode('utf-8'))
-                sub_list.append(list(bytes([b]) for b in pretoken.encode('utf-8')))
                 word_freq[byte_tuple] += 1
-            corpus_words_list.append(sub_list)
 
     print(f"total unique words: {len(word_freq)}")
-    
+    print(f"Performing {vocab_size - token_id} merges")
     
     while token_id < vocab_size:
+        new_dict = word_freq.copy()
         counts = {}
-        for entry in corpus_words_list:
-            # print(entry)
-            for word in entry:
-                # entry = list(entry)
-                for pair in zip(word, word[1:]):
-                    # print(pair)
-                    counts[pair] = counts.get(pair,0)+1
-            sorted_counts = {k:v for k,v in sorted(counts.items(), key= lambda item: (item[1], item[0]), reverse = True)}
+        for entry, freq in word_freq.items():
+            # print(entry, freq)
+            for pair in zip(entry, entry[1:]):
+                counts[pair] = counts.get(pair, 0) + freq
+        sorted_counts = {k:v for k,v in sorted(counts.items(), key= lambda item: (item[1], item[0]), reverse = True)}
         if len(sorted_counts) > 0:
             chr1, chr2 = next(iter(sorted_counts))
-            # merges.append((bytes(chr1)), bytes(chr2))
-            
             new_token = bytes(chr1) + bytes(chr2)
-
             vocab[token_id] = new_token
-            # print(f"{chr1} + {chr2} == {new_token}")
             merges.append((chr1, chr2))
 
-            for entry in corpus_words_list[0]:
-                entry = entry
+            for entry in word_freq:
+                old_entry = entry
+                entry = list(entry)
                 for i, char in enumerate(entry):
                     if (len(entry) >= 2) & (i < len(entry)-1):
                         if (entry[i], entry[i+1]) == (chr1, chr2):
                             entry[i] = new_token
                             entry[i+1:] = entry[i+2:]
-            token_id += 1
+                            new_dict[tuple(entry)] = word_freq[old_entry]
+                            del new_dict[old_entry]
+        token_id += 1
+        word_freq = new_dict.copy()
         if (token_id + 1) % 50 == 0:
             print(f"Completed {token_id + 1} merges...")
-    print(merges)
     print(vocab)
+    print(merges)
     return vocab, merges
 
 if __name__ == '__main__':
-    # bpe_trianer("tests/fixtures/tinystories_sample_5M.txt", 1000, ["<|endoftext|>"])
-    bpe_trianer("sample.txt", 270, ["<|endoftext|>"])
+    # bpe_trainer("tests/fixtures/corpus.en", 1000, ["<|endoftext|>"])
+    bpe_trainer("sample.txt", 270, ["<|endoftext|>"])
