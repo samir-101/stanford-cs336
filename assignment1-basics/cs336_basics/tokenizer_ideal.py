@@ -194,10 +194,10 @@ if __name__ == "__main__":
     # Train BPE
     vocab, merges = train_bpe(
         input_path="sample.txt",
-        vocab_size=270,  # 1 special + 256 bytes + 43 merges
+        vocab_size=300,  # 1 special + 256 bytes + 43 merges
         special_tokens=["<|endoftext|>"]
     )
-    # vocab, merges = train_bpe("tests/fixtures/corpus.en", 1000, ["<|endoftext|>"])
+    # vocab, merges = train_bpe("tests/fixtures/corpus.en", 400, ["<|endoftext|>"])
     
     # print(f"\nVocabulary size: {len(vocab)}")
     # print(f"Number of merges: {len(merges)}")

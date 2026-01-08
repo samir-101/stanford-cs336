@@ -26,9 +26,7 @@ def bpe_trainer(
 ) -> tuple[dict[int, bytes], list[tuple[bytes, bytes]]]:
     token_id = 0
     vocab = {}
-    merges = []
-    corpus_words_list = []
-    
+    merges = []    
     for token in special_tokens:
         vocab[token_id] = token.encode('utf-8')
         token_id += 1
@@ -64,31 +62,41 @@ def bpe_trainer(
     print(f"Performing {vocab_size - token_id} merges")
     
     while token_id < vocab_size:
-        new_dict = word_freq.copy()
+        new_dict = {}
         counts = {}
         for entry, freq in word_freq.items():
             # print(entry, freq)
             for pair in zip(entry, entry[1:]):
                 counts[pair] = counts.get(pair, 0) + freq
-        sorted_counts = {k:v for k,v in sorted(counts.items(), key= lambda item: (item[1], item[0]), reverse = True)}
-        if len(sorted_counts) > 0:
-            chr1, chr2 = next(iter(sorted_counts))
+        (chr1, chr2), freq = max(counts.items(), key= lambda item: (item[1], item[0]))
+        # print(chr1, chr2)
+        # print(sorted_counts)
+        if len(counts) > 0:
+            
             new_token = bytes(chr1) + bytes(chr2)
             vocab[token_id] = new_token
             merges.append((chr1, chr2))
-
+            # print(f"looking for pair {chr1}, {chr2}")
             for entry in word_freq:
-                old_entry = entry
-                entry = list(entry)
-                for i, char in enumerate(entry):
-                    if (len(entry) >= 2) & (i < len(entry)-1):
-                        if (entry[i], entry[i+1]) == (chr1, chr2):
-                            entry[i] = new_token
-                            entry[i+1:] = entry[i+2:]
-                            new_dict[tuple(entry)] = word_freq[old_entry]
-                            del new_dict[old_entry]
+                # old_entry = entry
+                # entry = list(entry)
+                replace_entry = []
+                i = 0
+                while i < len(entry):
+                    if (i < len(entry)- 1) and ((entry[i], entry[i+1]) == (chr1, chr2)):
+                        replace_entry.append(new_token)
+                        i+=2
+                    else:
+                        replace_entry.append(entry[i])
+                        i+=1
+                        # print(entry, old_entry)
+                
+                # print(replace_entry, entry)
+                new_dict[tuple(replace_entry)] = word_freq[entry]
+                # del new_dict[entry]
         token_id += 1
-        word_freq = new_dict.copy()
+
+        word_freq = new_dict
         if (token_id + 1) % 50 == 0:
             print(f"Completed {token_id + 1} merges...")
     print(vocab)
@@ -96,5 +104,5 @@ def bpe_trainer(
     return vocab, merges
 
 if __name__ == '__main__':
-    # bpe_trainer("tests/fixtures/corpus.en", 1000, ["<|endoftext|>"])
-    bpe_trainer("sample.txt", 270, ["<|endoftext|>"])
+    bpe_trainer("tests/fixtures/corpus.en", 1000, ["<|endoftext|>"])
+    # bpe_trainer("sample.txt", 300, ["<|endoftext|>"])
