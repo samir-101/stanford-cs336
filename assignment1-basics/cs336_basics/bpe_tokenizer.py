@@ -60,7 +60,7 @@ def pretokenization(corpus, special_tokens):
         corpus_segments = [segment for segment in corpus_segments if segment]
     else:
         corpus_segments = [corpus]
-    
+    # len_size = 0
     PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
     word_freq = Counter()
     for part in tqdm(corpus_segments):
@@ -68,9 +68,11 @@ def pretokenization(corpus, special_tokens):
             continue
         else:
             pretokens = re.findall(PAT, part)
+            # len_size += len(pretokens)
             for pretoken in pretokens:
                 byte_tuple = tuple(bytes([b]) for b in pretoken.encode('utf-8'))
                 word_freq[byte_tuple] += 1
+    # print(len_size)
     return word_freq
 
 def bpe_trainer(
@@ -93,7 +95,7 @@ def bpe_trainer(
     results = []
 
     with open(input_path, "rb") as f:
-        num_processes = 8
+        num_processes = 4
         boundaries = find_chunk_boundaries(f, num_processes, b"<|endoftext|>")
 
         # The following is a serial implementation, but you can parallelize this
@@ -102,16 +104,15 @@ def bpe_trainer(
         for start, end in zip(boundaries[:-1], boundaries[1:]):
             f.seek(start)
             chunks.append((f.read(end - start).decode("utf-8", errors="ignore"), special_tokens))
-        # print(type(chunks[0]))
         with multiprocessing.Pool() as pool:
             results.append(pool.starmap(pretokenization, chunks))
+    
+    
 
-    # print(len(results))
     word_freq = {}
     for dicts in results[0]:
         for entry in dicts:
-            # print(type(entry))
-            word_freq[entry] = dicts.get(entry, 0)
+            word_freq[entry] = word_freq.get(entry,0) + dicts.get(entry, 0)
 
     print(f"total unique words: {len(word_freq)}")
     print(f"Performing {vocab_size - token_id} merges")
@@ -148,6 +149,7 @@ def bpe_trainer(
     return vocab, merges
 
 if __name__ == '__main__':
-    bpe_trainer("data/TinyStoriesV2-GPT4-train.txt", 10000, ["<|endoftext|>"])
+    bpe_trainer("data/owt_train.txt", 32000, ["<|endoftext|>"])
+    # bpe_trainer("data/TinyStoriesV2-GPT4-train.txt", 10000, ["<|endoftext|>"])
     # bpe_trainer("tests/fixtures/corpus.en", 1000, ["<|endoftext|>"])
     # bpe_trainer("sample.txt", 300, ["<|endoftext|>"])

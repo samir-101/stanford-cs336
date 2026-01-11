@@ -61,6 +61,7 @@ def train_bpe(
     text_parts = _split_on_special_tokens(text, special_tokens)
     
     # Pre-tokenize and count word frequencies
+    len_size = 0
     word_freqs = Counter()
     for part in text_parts:
         if part in special_tokens:
@@ -69,11 +70,12 @@ def train_bpe(
         else:
             # Apply regex pre-tokenization
             pretokens = re.findall(PAT, part)
+            len_size += len(pretokens)
             for pretoken in pretokens:
                 # Convert to tuple of bytes objects (not individual byte values)
                 byte_tuple = tuple(bytes([b]) for b in pretoken.encode('utf-8'))
                 word_freqs[byte_tuple] += 1
-    
+    print(len_size)
     print(f"Found {len(word_freqs)} unique pre-tokens")
     
     # Step 3: Perform BPE merges
@@ -130,7 +132,6 @@ def _split_on_special_tokens(text: str, special_tokens: List[str]) -> List[str]:
     
     # Filter out empty strings
     return [part for part in parts if part]
-
 
 def _count_pairs(word_freqs: Dict[Tuple[bytes, ...], int]) -> Counter:
     """Count all adjacent byte pairs across all words."""
@@ -192,13 +193,13 @@ if __name__ == "__main__":
         f.write(test_corpus)
     
     # Train BPE
-    vocab, merges = train_bpe(
-        input_path="sample.txt",
-        vocab_size=300,  # 1 special + 256 bytes + 43 merges
-        special_tokens=["<|endoftext|>"]
-    )
+    # vocab, merges = train_bpe(
+    #     input_path="sample.txt",
+    #     vocab_size=300,  # 1 special + 256 bytes + 43 merges
+    #     special_tokens=["<|endoftext|>"]
+    # )
     # vocab, merges = train_bpe("tests/fixtures/corpus.en", 400, ["<|endoftext|>"])
-    
+    vocab, merges = train_bpe("tests/fixtures/tinystories_sample_5M.txt", 1000, ["<|endoftext|>"])
     # print(f"\nVocabulary size: {len(vocab)}")
     # print(f"Number of merges: {len(merges)}")
     
