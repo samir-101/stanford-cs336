@@ -199,7 +199,7 @@ if __name__ == "__main__":
     #     special_tokens=["<|endoftext|>"]
     # )
     # vocab, merges = train_bpe("tests/fixtures/corpus.en", 400, ["<|endoftext|>"])
-    vocab, merges = train_bpe("tests/fixtures/tinystories_sample_5M.txt", 1000, ["<|endoftext|>"])
+    vocab, merges = train_bpe("data/owt_train.txt", 32000, ["<|endoftext|>"])
     # print(f"\nVocabulary size: {len(vocab)}")
     # print(f"Number of merges: {len(merges)}")
     

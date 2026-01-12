@@ -81,71 +81,136 @@ def bpe_trainer(
     special_tokens: list[str],
     **kwargs,
 ) -> tuple[dict[int, bytes], list[tuple[bytes, bytes]]]:
-    token_id = 0
+    # 1. Initialize Vocab
     vocab = {}
     merges = []
-
+    token_id = 0
+    
+    # Special tokens first
     for token in special_tokens:
         vocab[token_id] = token.encode('utf-8')
         token_id += 1
-
+    
+    # Initial byte tokens
     for i in range(256):
         vocab[token_id] = bytes([i])
         token_id += 1
+        
+    # 2. Pre-tokenization / Reading
     results = []
-
     with open(input_path, "rb") as f:
-        num_processes = 4
-        boundaries = find_chunk_boundaries(f, num_processes, b"<|endoftext|>")
-
-        # The following is a serial implementation, but you can parallelize this
-        # by sending each start/end pair to a set of processes.
-        chunks = []
-        for start, end in zip(boundaries[:-1], boundaries[1:]):
-            f.seek(start)
-            chunks.append((f.read(end - start).decode("utf-8", errors="ignore"), special_tokens))
-        with multiprocessing.Pool() as pool:
-            results.append(pool.starmap(pretokenization, chunks))
-    
-    
-
-    word_freq = {}
-    for dicts in results[0]:
-        for entry in dicts:
-            word_freq[entry] = word_freq.get(entry,0) + dicts.get(entry, 0)
+        f.seek(0, os.SEEK_END)
+        size = f.tell()
+        f.seek(0)
+        
+        if size < 1024 * 1024: # 1MB
+             txt = f.read().decode("utf-8", errors="ignore")
+             word_freq = pretokenization(txt, special_tokens)
+        else:
+             processed_chunks = []
+             num_processes = 8
+             boundaries = find_chunk_boundaries(f, num_processes, b"<|endoftext|>")
+             chunks = []
+             for start, end in zip(boundaries[:-1], boundaries[1:]):
+                 f.seek(start)
+                 chunks.append((f.read(end - start).decode("utf-8", errors="ignore"), special_tokens))
+             
+             with multiprocessing.Pool(processes=num_processes) as pool:
+                for chunk in chunks:
+                #  processed_chunks = pool.starmap(pretokenization, chunks)
+                    processed_chunks.append(pretokenization(chunk))
+                 
+             word_freq = Counter()
+             for chunk_freq in processed_chunks:
+                 word_freq.update(chunk_freq)
 
     print(f"total unique words: {len(word_freq)}")
+    
+    # 3. Build data structures for efficient merging
+    byte_to_id = {bytes([i]): i + len(special_tokens) for i in range(256)}
+    
+    words = []
+    counts = []
+    
+    pair_stats = {}
+    pair_locations = {}
+    
+    for i, (word_bytes_tuple, count) in enumerate(word_freq.items()):
+        ids = [byte_to_id[b] for b in word_bytes_tuple]
+        words.append(ids)
+        counts.append(count)
+        
+        for j in range(len(ids) - 1):
+            pair = (ids[j], ids[j+1])
+            pair_stats[pair] = pair_stats.get(pair, 0) + count
+            if pair not in pair_locations:
+                pair_locations[pair] = set()
+            pair_locations[pair].add(i)
+
     print(f"Performing {vocab_size - token_id} merges")
     
     while token_id < vocab_size:
-        new_dict = {}
-        counts = {}
-        for entry, freq in word_freq.items():
-            for pair in zip(entry, entry[1:]):
-                counts[pair] = counts.get(pair, 0) + freq
-        (chr1, chr2), freq = max(counts.items(), key= lambda item: (item[1], item[0]))
-        if len(counts) > 0:
+        if not pair_stats:
+            break
             
-            new_token = bytes(chr1) + bytes(chr2)
-            vocab[token_id] = new_token
-            merges.append((chr1, chr2))
-            for entry in word_freq:
-                replace_entry = []
-                i = 0
-                while i < len(entry):
-                    if (i < len(entry)- 1) and ((entry[i], entry[i+1]) == (chr1, chr2)):
-                        replace_entry.append(new_token)
-                        i+=2
-                    else:
-                        replace_entry.append(entry[i])
-                        i+=1
-                new_dict[tuple(replace_entry)] = word_freq[entry]
+        # Tie-breaking: maximize frequency, then maximize the byte representation of the pair
+        # to match reference implementation which uses (bytes1, bytes2) as keys.
+        best_pair = max(
+            pair_stats, 
+            key=lambda p: (pair_stats[p], vocab[p[0]], vocab[p[1]])
+        )
+        
+        if pair_stats[best_pair] < 1:
+            break
+            
+        new_token_bytes = vocab[best_pair[0]] + vocab[best_pair[1]]
+        vocab[token_id] = new_token_bytes
+        merges.append((vocab[best_pair[0]], vocab[best_pair[1]]))
+        
+        occurrences = pair_locations.pop(best_pair)
+        del pair_stats[best_pair]
+        
+        for word_idx in occurrences:
+            w_ids = words[word_idx]
+            w_count = counts[word_idx]
+            
+            # 1. Remove old pairs statistics for this word
+            for j in range(len(w_ids) - 1):
+                p = (w_ids[j], w_ids[j+1])
+                if p == best_pair: continue
+                pair_stats[p] -= w_count
+                if pair_stats[p] == 0:
+                    del pair_stats[p]
+                if p in pair_locations:
+                    pair_locations[p].discard(word_idx)
+                    if not pair_locations[p]:
+                        del pair_locations[p]
+
+            # 2. Construct new word
+            new_w_ids = []
+            i = 0
+            while i < len(w_ids):
+                if i < len(w_ids) - 1 and w_ids[i] == best_pair[0] and w_ids[i+1] == best_pair[1]:
+                    new_w_ids.append(token_id)
+                    i += 2
+                else:
+                    new_w_ids.append(w_ids[i])
+                    i += 1
+            
+            words[word_idx] = new_w_ids
+            
+            # 3. Add new pairs statistics
+            for j in range(len(new_w_ids) - 1):
+                p = (new_w_ids[j], new_w_ids[j+1])
+                pair_stats[p] = pair_stats.get(p, 0) + w_count
+                if p not in pair_locations:
+                    pair_locations[p] = set()
+                pair_locations[p].add(word_idx)
+
         token_id += 1
-        word_freq = new_dict
         if (token_id + 1) % 50 == 0:
             print(f"Completed {token_id + 1} merges...")
-    print(vocab)
-    print(merges)
+            
     return vocab, merges
 
 if __name__ == '__main__':
